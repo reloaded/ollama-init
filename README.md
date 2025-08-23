@@ -15,4 +15,4 @@ docker run --rm \
   -v $PWD/modelfiles:/modelfiles:ro \
   -v ollama_init_state:/state \
   --network=host \
-  ghcr.io/YOURORG/ollama-init:0.1.0
+  ghcr.io/reloaded/ollama-init:latest
