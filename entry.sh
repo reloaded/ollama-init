@@ -4,10 +4,22 @@ set -e
 : "${OLLAMA_URL:=http://ollama:11434}"
 : "${MODELDIR:=/modelfiles}"
 : "${STATE_FILE:=/state/model_checksums.json}"
+: "${GIT_URL:=}"
+: "${GIT_REF:=main}"
 
-echo "[init] using MODELDIR=$MODELDIR OLLAMA_URL=$OLLAMA_URL STATE_FILE=$STATE_FILE"
+echo "[init] using MODELDIR=$MODELDIR OLLAMA_URL=$OLLAMA_URL STATE_FILE=$STATE_FILE GIT_URL=$GIT_URL GIT_REF=$GIT_REF"
 
 apk add --no-cache curl jq >/dev/null
+
+# Optional: fetch Modelfiles from Git
+if [ -n "$GIT_URL" ]; then
+  apk add --no-cache git >/dev/null
+  rm -rf "$MODELDIR" && mkdir -p "$MODELDIR"
+  git clone --depth 1 --branch "$GIT_REF" "$GIT_URL" /tmp/modelfiles >/dev/null
+  # Expect *.Modelfile at repo root
+  cp /tmp/modelfiles/*.Modelfile "$MODELDIR"/ 2>/dev/null || true
+fi
+
 
 echo "[init] waiting for ollama..."
 until curl -sf "$OLLAMA_URL/api/tags" >/dev/null; do
@@ -19,13 +31,7 @@ echo "[init] ollama up."
 mkdir -p "$(dirname "$STATE_FILE")"
 [ -f "$STATE_FILE" ] || echo "{}" > "$STATE_FILE"
 # normalize corrupted JSON
-if ! jq empty "$STATE_FILE" >/dev/null 2>&1; then
-  echo "{}" > "$STATE_FILE"
-fi
-
-if [ ! -d "$MODELDIR" ]; then
-  echo "[init] ERROR: MODELDIR $MODELDIR not mounted"; exit 1
-fi
+jq empty "$STATE_FILE" >/dev/null 2>&1 || echo "{}" > "$STATE_FILE"
 
 updated_state="$(cat "$STATE_FILE")"
 found_any=false
