@@ -60,11 +60,41 @@ for f in "$MODELDIR"/*.Modelfile; do
     echo "[init] $name missing; creating..."
   fi
 
-  payload="$(jq -Rs . "$f")"
-  curl -s -X POST "$OLLAMA_URL/api/create" \
-    -H "Content-Type: application/json" \
-    -d "{\"name\":\"$name\",\"modelfile\":$payload}" >/dev/null
-  echo "[init] created $name."
+	# payload from file
+	mf_payload="$(jq -Rs . "$f")"
+
+	# 1) try modelfile form
+	resp="$(curl -s -w '\n%{http_code}' -X POST "$OLLAMA_URL/api/create" \
+	  -H 'Content-Type: application/json' \
+	  -d "{\"name\":\"$name\",\"modelfile\":$mf_payload}")"
+	body="$(echo "$resp" | head -n -1)"
+	code="$(echo "$resp" | tail -n1)"
+	echo "[init] create(modelfile) $name -> HTTP $code $body"
+
+	# If server complains about from/files, or non-2xx, try JSON 'from' form
+	if echo "$body" | grep -qi "neither 'from' or 'files' was specified" || [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+	  # parse the FROM line from the Modelfile
+	  base="$(awk '/^[[:space:]]*FROM[[:space:]]+/ {print $2; exit}' "$f")"
+	  [ -z "$base" ] && { echo "[init] ERROR: no FROM line in $f"; exit 1; }
+
+	  # extract optional parameters we care about
+	  gl="$(awk '/^[[:space:]]*PARAMETER[[:space:]]+gpu_layers[[:space:]]+/ {print $3; exit}' "$f")"
+	  ctx="$(awk '/^[[:space:]]*PARAMETER[[:space:]]+num_ctx[[:space:]]+/ {print $3; exit}' "$f")"
+
+	  params='{'
+	  [ -n "$gl" ] && params="$params\"gpu_layers\": $gl"
+	  [ -n "$gl" ] && [ -n "$ctx" ] && params="$params, "
+	  [ -n "$ctx" ] && params="$params\"num_ctx\": $ctx"
+	  params="$params}"
+
+	  resp="$(curl -s -w '\n%{http_code}' -X POST "$OLLAMA_URL/api/create" \
+		-H 'Content-Type: application/json' \
+		-d "{\"name\":\"$name\",\"from\":\"$base\",\"parameters\":$params}")"
+	  body="$(echo "$resp" | head -n -1)"
+	  code="$(echo "$resp" | tail -n1)"
+	  echo "[init] create(from) $name -> HTTP $code $body"
+	  [ "$code" -ge 200 ] && [ "$code" -lt 300 ] || { echo "[init] ERROR creating $name (from-form)"; exit 1; }
+	fi
 
   updated_state="$(echo "$updated_state" | jq --arg n "$name" --arg h "$hash" '.[$n]=$h')"
 done
