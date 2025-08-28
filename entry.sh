@@ -15,6 +15,7 @@ apk add --no-cache curl jq >/dev/null
 if [ -n "$GIT_URL" ]; then
   apk add --no-cache git >/dev/null
   rm -rf "$MODELDIR" && mkdir -p "$MODELDIR"
+  rm -rf "/tmp/modelfiles_repo"
   git clone --depth 1 --branch "$GIT_REF" "$GIT_URL" /tmp/modelfiles_repo >/dev/null
   # Expect *.Modelfile at repo root
   cp /tmp/modelfiles_repo/modelfiles/*.Modelfile "$MODELDIR"/ 2>/dev/null || true
